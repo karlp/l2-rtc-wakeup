@@ -10,7 +10,7 @@
 #define configUSE_PREEMPTION                    1
 #define configUSE_PORT_OPTIMISED_TASK_SELECTION 1
 #define configUSE_TICKLESS_IDLE                 1
-#define configCPU_CLOCK_HZ                      64000000
+#define configCPU_CLOCK_HZ                      32000000
 #define configTICK_RATE_HZ                      1000
 
 // TODO - revisit for low power

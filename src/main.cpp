@@ -32,17 +32,64 @@ auto led_g = GPIOE[15];
 auto led_b = GPIOE[12];
 #endif
 
+/* disable this with a debugger if you want to measure power sanely
+ * You'll then have to watch the ITM channels to see that things do what you think.
+ */
+bool opt_really_use_leds = false;
+/**
+ * Run at 32Mhz instead of laks "top speed" by default.
+ * 32Mhz is what many ST WB demos run at, and if you don't need more, it's
+ * probably a good choice.
+ */
+const bool opt_clock_32mhz = true;
 
-static TimerHandle_t xBlueTimer;
-static void prvTimerBlue(TimerHandle_t xTimer)
-{
-	/* Timers can only work on globals, boo,
-	 * no, (ab)using pvTimerGetTimerID doesn't sound worthwhile */
-        (void) xTimer;
-//        led_b.toggle();
+void krcc_init32(void) {
+	// Prefetch and both caches, plus 1WS for 32MHz
+	FLASH->ACR = 0x700 | 1;
+
+	// Enable HSE.
+	RCC->CR |= (1<<16);
+	while(!(RCC->CR & (1<<17)));
+
+	/* I initially setup PLL to 32Mhz, because I had PLL to 64, and just downtuned
+	 * but if you want lower power, use HSE by itself at 32.  The PLL is useless burn
+	 */
+#if defined(USE_PLL_32)
+	// Configure and enable PLL.
+	// R=2, Q = 2, P = 2, M = 2, N = 8, src=HSE
+	const auto m = 2;
+	const auto n = 8;
+	const auto p = 2;
+	const auto q = 2;
+	const auto r = 4;
+	//const auto hse_pre_div2 = false;
+
+	RCC->PLLCFGR = ((r-1)<<29) | (1<<28) | ((q-1)<<25) | ((p-1)<<17) | (n<<8) | ((m-1)<<4) | (3<<0);
+	RCC->CR |= (1<<24);
+	while(!(RCC->CR & (1<<25)));
+
+	// Switch to PLL.
+	RCC->CFGR |= 0x3;
+	while((RCC->CFGR & (3 << 2)) != (3 << 2)); // SWS = PLL
+#else
+	//RCC->CFGR &= ~0x3; // do I need this? unlikely at reset? possibly at other times?
+	RCC->CFGR |= 0x2;
+	while ((RCC->CFGR & (2<<2)) != (2<<2)); // SWS = HSE
+#endif
+	// Leave prescalers alone...
 }
 
+static TimerHandle_t xBlueTimer;
+static TaskHandle_t th_blue;
+static void prvTimerBlue(TimerHandle_t xTimer)
+{
+	xTaskNotifyGive(th_blue);
+}
 
+/**
+ * Green uses a "normal" busy task, blocking loop of it's own.
+ * @param pvParameters
+ */
 static void prvTaskBlinkGreen(void *pvParameters)
 {
 	(void)pvParameters;
@@ -53,14 +100,40 @@ static void prvTaskBlinkGreen(void *pvParameters)
 		i++;
 		vTaskDelay(pdMS_TO_TICKS(500));
 	        ITM->stim_blocking(1, (uint8_t)('a' + (i%26)));
-//		led_g.toggle();
+		if (opt_really_use_leds) {
+			led_g.toggle();
+		}
 		printf("G: %d\n", i);
+	}
+}
+
+/**
+ * Blue uses a timer to notify the task it's time to do the blink.
+ * @param pvParameters
+ */
+static void prvTaskBlinkBlue(void *pvParameters) {
+	(void)pvParameters;
+	led_b.set_mode(Pin::Output);
+	
+	int i = 0;
+	while (1) {
+		i++;
+		xTaskNotifyWait(1, 1, NULL, portMAX_DELAY);
+		ITM->stim_blocking(2, (uint8_t)('A' + (i%26)));
+		if (opt_really_use_leds) {
+			led_b.toggle();
+		}
+		printf("B: %d\n", i);
 	}
 }
 
 
 int main() {
-	rcc_init();
+	if (opt_clock_32mhz) {
+		krcc_init32();
+	} else {		
+		rcc_init();
+	}
 
 	// Turn on DWT_CYCNT.  We'll use it ourselves, and pc sampling needs it too.
 	DWT->CTRL |= 1;
@@ -68,9 +141,9 @@ int main() {
 	RCC.enable(rcc::GPIOB);
 	RCC.enable(rcc::GPIOE);
 
-	xTaskCreate(prvTaskBlinkGreen, "green.blink", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1, NULL);
+	xTaskCreate(prvTaskBlinkGreen, "blink.green", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1, NULL);
+	xTaskCreate(prvTaskBlinkBlue, "blink.blue", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1, &th_blue);
 
-	led_b.set_mode(Pin::Output);
 	xBlueTimer = xTimerCreate("blue.blink", 200 * portTICK_PERIOD_MS, true, 0, prvTimerBlue);
 	if (xBlueTimer) {
 		if (xTimerStart(xBlueTimer, 0) != pdTRUE) {
@@ -83,7 +156,7 @@ int main() {
 	}
 
 	// Required to use FreeRTOS ISR methods!
-	NVIC.set_priority(interrupt::irq::DMA1_CH1, 6<<configPRIO_BITS);
+//	NVIC.set_priority(interrupt::irq::DMA1_CH1, 6<<configPRIO_BITS);
 
 	vTaskStartScheduler();
 
