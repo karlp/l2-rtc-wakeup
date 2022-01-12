@@ -91,4 +91,5 @@ if not env.GetOption('clean'):
 ######
 
 env.Append(LIBS = "cmsisdsp", LIBPATH="${CMSIS}")
-env.Firmware('main.elf', [os.path.join('src', x) for x in ['main.cpp', 'syszyp.cpp']] + sources_freertos)
+srcs_app = [os.path.join('src', x) for x in ['main.cpp', 'syszyp.cpp', 'l_freertos.cpp']]
+env.Firmware('main.elf', srcs_app + sources_freertos)
