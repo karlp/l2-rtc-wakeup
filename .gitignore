@@ -1,0 +1,6 @@
+*.o
+*.elf
+
+nbproject/
+
+.sconsign.dblite
