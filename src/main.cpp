@@ -5,8 +5,10 @@
 #include <dma/dma.h>
 #include <gpio/gpio.h>
 #include <interrupt/interrupt.h>
+#include <pwr/pwr.h>
 #include <rcc/flash.h>
 #include <rcc/rcc.h>
+#include <rtc/rtc.h>
 #include <timer/timer.h>
 #include <uart/uart.h>
 #include <usb/usb.h>
@@ -79,6 +81,88 @@ void krcc_init32(void) {
 	// Leave prescalers alone...
 }
 
+/** We're going to use this for low power wakeups! see l_freertos.cpp....  (code organization wat?
+ * Big difference to ST implementation, we're _ONLY_ going to use it for low power sleep wakeups
+ * Because we're _only_ supporting freertos, we don't need to have linked lists
+ * of overlapping timers all using this rtc wakeup timer.  just use the os timers for that,
+ * and it actually turns into the same thing, handled internally.
+ * this makes it _wayyyyyy simpler_ but also much less "flexible"
+ */
+static void krtc_init(void) {
+	PWR->CR1 |= (1<<8); // Unlock backup domain
+	
+	//FUcking wat? (this is st style)
+//	if (!(RCC->BDCR & (1<<1))) { // LSERDY
+		// Force a backup domain reset...
+		RCC->BDCR |= (1<<16);
+		RCC->BDCR &= ~(1<<16);
+		RCC->BDCR |= (1<<0); // LSE on...
+
+		while (!(RCC->BDCR & (1<<1))) {
+			; // LSE RDY
+		}
+
+		
+		RCC->BDCR |= (1<<8); // RTCSEL = LSE
+		
+//	}
+	
+	
+////	RCC->BDCR = (1<<15) | (1<<8) | (1<<0); // RTCEN | RTCSEL=LSE | LSE ON
+//	// no difference splitting like ST does...
+//	RCC->BDCR |= (1<<8); // RTCSEL = LSE
+//	RCC->BDCR |= (1<<15); // RTCEN
+//	RCC.enable(rcc::RTCAPB);  // APB access, apparently important too...
+//
+////	RTC->CR |= (1<<5); // Bypass shadow ? why do we care?
+	
+	// Now, MX_RTC_Init()
+	RCC->BDCR |= (1<<15); // RTCEN
+	RCC.enable(rcc::RTCAPB);  // ST has an error in this, but, whatever, obviously not very important
+	
+	// Ok, now rtc itself..
+	RTC->WPR = 0xCA;
+	RTC->WPR = 0x53;
+//	RTC.unlock();
+	
+	
+	//// Might as well init calendar? 
+	//RTC->ISR |= (1<<7); // set init
+	RTC->ISR = 0xffffffff; // ST style?!
+	while (!(RTC->ISR & (1<<6))) {   // FIXME - this always hangs....
+		; // Poll til ready.
+	}
+	RTC->PRER = 0x7f00ff;  // yes, default is divided by (0x7f+1)*(0xff+1) => 32768....
+	
+	// zero time is as good as any....
+	RTC->TR = 0;
+	RTC->DR = 0;
+	
+	RTC->CR &= ~(1<<6);  // 24 hour yo
+	RTC->ISR &= ~(1<<7);  // Clear init to start calendar
+	///// End of "calendar"
+	
+	//// WAKEUP TIMER _init_ but don't start...
+	// WUCKSEL = 16 is good...
+	RTC->CR &= ~(1<<10); // clear WUTE while we setup
+	while (!(RTC->ISR & (1<<2))) {
+		; // Wait for WUTWF
+	}
+	RTC->CR &= ~(0x7<<0);  // Clear WUCKSEL
+	RTC->CR |= (0<<0); // WUCKSEL = RTC/16...
+	// I _think_ we can start it here, but jsut don't turn on the interrupt?
+	RTC->CR |= (1<<10); // WUTE
+	// But WUTR is protected by WUTWF anyway, so probably doesn't buy us much...
+	
+	
+//	RTC.lock();
+	RTC->WPR=0xff;
+	
+	
+	// Oh yeah, someone has to allow the RTC wakeup timer irq in nvic to make it wakeu right?
+	NVIC.enable(interrupt::irq::RTC_WKUP);
+}
+
 static TimerHandle_t xBlueTimer;
 static TaskHandle_t th_blue;
 static void prvTimerBlue(TimerHandle_t xTimer)
@@ -134,9 +218,13 @@ int main() {
 	} else {		
 		rcc_init();
 	}
+	printf("clocked up, turning on rtc...\n");
 
 	// Turn on DWT_CYCNT.  We'll use it ourselves, and pc sampling needs it too.
 	DWT->CTRL |= 1;
+	
+	krtc_init();
+	printf("RTC init, ready to start!\n");
 
 	RCC.enable(rcc::GPIOB);
 	RCC.enable(rcc::GPIOE);
