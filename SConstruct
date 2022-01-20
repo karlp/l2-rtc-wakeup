@@ -93,4 +93,5 @@ if not env.GetOption('clean'):
 env.Append(LIBS = "cmsisdsp", LIBPATH="${CMSIS}")
 srcs_app = [os.path.join('src', x) for x in ['main.cpp', 'syszyp.cpp', 'l_freertos.cpp']]
 env.Firmware('main.elf', srcs_app + sources_freertos)
+env.Firmware("wat-rtc-wkup.elf", [os.path.join('src', x) for x in ['wat-rtc-wkup.cpp', 'syszyp.cpp']])
 env.Firmware("wat-exti.elf", [os.path.join('src', x) for x in ['wat-exti.cpp', 'syszyp.cpp']])
