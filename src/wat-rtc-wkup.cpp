@@ -1,5 +1,12 @@
 /**
  * "example" of using the RTC wakeup timer.
+ * This is like the "RTC_ExitStandbyWithWakeupTimer" example.
+ * Blinks on boot, then button to enter a low power mode, wakesup again later.
+ * Extension is that the button can _also_ wake you up early,
+ * and you can look at the WUTR and see how early...
+ * Plan is to have it go to a stop mode, and use either rtc wakeup or 
+ * button wakeup, and be able to tell you whether it woke up early,
+ * and by how much...
  */
 #include <cstdio>
 
@@ -57,7 +64,7 @@ void krcc_init32(void) {
  * and it actually turns into the same thing, handled internally.
  * this makes it _wayyyyyy simpler_ but also much less "flexible"
  */
-static void krtc_init(void) {
+static void krtc_init_old(void) {
 	PWR->CR1 |= (1<<8); // Unlock backup domain
 	
 	//FUcking wat? (this is st style)
@@ -133,6 +140,76 @@ static void krtc_init(void) {
 }
 
 
+
+// one more time, with feeling..
+static void krtc_init(void) {
+	PWR->CR1 |= (1<<8); // Unlock backup domain
+	
+	// For _now_ we're doing a hard backup domain reset, so we can be sure shit works.
+	// in real world, you almost definitely don't want to do that, as you'll trash your RTC that carefully
+	// stayed running while you were stopped.
+	bool opt_hard_reset_backup_domain = true;
+	if (opt_hard_reset_backup_domain) {
+		printf("hard reset backup domain\n");
+		RCC->BDCR |= (1<<16);
+		RCC->BDCR &= ~(1<<16);
+	}
+	
+	// make sure LSE is on, we need that for most sane uses of RTC
+	RCC->BDCR |= 1;
+	while (!(RCC->BDCR & (1<<1))) {
+		; // wait for LSERDY
+	}
+	
+	RCC->BDCR |= (1<<8); // RTCSEL == LSE
+	RCC->BDCR |= (1<<15); // RTCEN
+	RCC.enable(rcc::RTCAPB);
+	while (!(RCC->APB1ENR1 & rcc::RTCAPB)) {
+		; // make sure we have access!
+	}
+	
+	
+	
+	RTC.unlock();
+	RTC->PRER = 0x7f00ff; // default, gives 1sec from 32768
+	
+	// set wakekup clock sel to rtc/16, so ~488usecs per tick
+	RTC->CR &= ~(0x7<<0);
+	RTC->CR |= (0<<0);
+
+	RTC.lock();
+	
+	// Set it up now
+	NVIC.enable(interrupt::irq::RTC_WKUP);
+
+}
+
+static void kwkup_start(uint16_t wu_ticks)
+{
+	RTC.unlock();
+	
+	// Disable wakeup
+	RTC->CR &= ~(1<<10); // Disable WUTE
+	while (!(RTC->ISR & (1<<2))) {
+		; // wait for WUTWF
+	}
+	
+	RTC->WUTR = wu_ticks;  // ~about 5 seconds.
+
+
+	RTC->CR |= (1<<14); // WUTIE enable irq
+	RTC->CR |= (1<<10); // Re-enable WUTE
+	
+	RTC.lock();
+	
+	// now, clear the WUTF flag!
+	RTC->ISR = ~((1<<10) | (1<<7)); // write 0 to WUTF, and ensure INIT stays 0 too...
+
+	
+	PWR->CR3 |= (1<<15); // EIWUL enable wakeup cpu1
+
+}
+
 static void kexti_init(void) {
 	// sw_3.. is D1...
 	RCC.enable(rcc::GPIOD);
@@ -149,7 +226,14 @@ static void kexti_init(void) {
 	NVIC.enable(interrupt::irq::EXTI1);
 }
 
-static bool pressed = true;
+// for starters...
+static void ksleep() {
+	kwkup_start(9999);
+	
+	asm volatile ("wfi");
+}
+
+static volatile bool pressed = false;
 
 int main() {
 	krcc_init32();
@@ -158,8 +242,8 @@ int main() {
 	// Turn on DWT_CYCNT.  We'll use it ourselves, and pc sampling needs it too.
 	DWT->CTRL |= 1;
 	
-//	krtc_init();
-//	printf("RTC init, ready to start!\n");
+	krtc_init();
+	printf("RTC init, ready to  start!\n");
 	
 	kexti_init();
 	
@@ -169,26 +253,40 @@ int main() {
 		led_b.set_mode(Pin::Output);
 	}
 
-
+	
+	// Depending on sleep mode, you may be restarting from scratch, or looping
 	while (1) {
-		int mul = pressed ? 1 : 3;
-		for (int i = 0; i < 0x80000 * mul; i++) {
-			asm volatile ("nop");
+		printf("start loop\n");
+		while (!pressed) {
+			for (int i = 0; i < 0x80000; i++) {
+				asm volatile ("nop");
+			}
+			if (opt_really_use_leds) {
+				led_b.toggle();
+			}
 		}
-		if (opt_really_use_leds) {
-//			led_b.set(sw_3.get());
-			led_b.toggle();
-		}
+		// Ok, button pressed, go to sleep!
+		printf("going to sleep...\n");
+		ksleep();
+		pressed = false;
+		printf("woke up..\n");
 	}
+		
 	return 0;
 }
 
 
 template <>
+void interrupt::handler<interrupt::irq::RTC_WKUP>() {
+	RTC->ISR &= ~((1<<10) | (1<<7)); // write 0 to WUTF, and ensure INIT stays 0 too...
+	ITM->stim_blocking(0, '$');
+	printf("wu: %lu\n", RTC->WUTR);
+}
+
+template <>
 void interrupt::handler<interrupt::irq::EXTI1>() {
 	EXTI->PR1 |= (1<<sw_3.n);
 	ITM->stim_blocking(0, '!');
-	pressed = !pressed;
-	//opt_really_use_leds = !opt_really_use_leds;
+	pressed = true;
 }
 
