@@ -68,12 +68,12 @@ static void kexti_init(void) {
 		uint32_t lol =  (sw.get_portnum() << ((sw.n & 0x3) * 4));
 		printf("pin %u, exticr: %u, port %u, shiftupmul: %u, lolwut: %#lx\n", sw.n, sw.n>>2, sw.get_portnum(), sw.n & 0x3, lol);
 
-		printf("Prior: %#lx\n", SYSCFG.EXTICR[sw.n>>2]);
-		SYSCFG.EXTICR[sw.n >> 2] &= ~(0xf << ((sw.n & 0x3) * 4));
-		printf("after clearing: %#lx\n", SYSCFG.EXTICR[sw.n>>2]);
-		SYSCFG.EXTICR[sw.n >> 2] |= (sw.get_portnum() << ((sw.n & 0x3) * 4));
-//		SYSCFG.EXTICR[sw.n >> 2] |= lol;
-		printf("after oring in lol: %#lx: %#lx\n", lol, SYSCFG.EXTICR[sw.n>>2]);
+		printf("Prior: %#lx\n", SYSCFG->EXTICR[sw.n>>2]);
+		SYSCFG->EXTICR[sw.n >> 2] &= ~(0xf << ((sw.n & 0x3) * 4));
+		printf("after clearing: %#lx\n", SYSCFG->EXTICR[sw.n>>2]);
+		SYSCFG->EXTICR[sw.n >> 2] |= (sw.get_portnum() << ((sw.n & 0x3) * 4));
+//		SYSCFG->EXTICR[sw.n >> 2] |= lol;
+		printf("after oring in lol: %#lx: %#lx\n", lol, SYSCFG->EXTICR[sw.n>>2]);
 		
 		EXTI->IMR1 |= (1 << sw.n); // unmask
 		EXTI->FTSR1 |= (1 << sw.n); // falling edge
@@ -82,8 +82,8 @@ static void kexti_init(void) {
 	
 	// Select sources
 	// old manual way..
-//	SYSCFG.EXTICR[0] = (3 << 4) | (3<<0);  // PD0 and PD1
-//	SYSCFG.EXTICR[1] = 2 << 0;  // PC4
+//	SYSCFG->EXTICR[0] = (3 << 4) | (3<<0);  // PD0 and PD1
+//	SYSCFG->EXTICR[1] = 2 << 0;  // PC4
 
 //	EXTI->IMR1 = (1 << sw_1.n) | (1<<sw_2.n) | (1<<sw_3.n);  // unmask interrupt
 //	EXTI->FTSR1 = (1 << sw_1.n) | (1 << sw_2.n) | ( 1 << sw_3.n);  // falling
