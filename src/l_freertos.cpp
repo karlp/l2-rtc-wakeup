@@ -119,22 +119,27 @@ static void LpTimerStart(uint32_t time_to_sleep) {
 	
 	// FIXME kkk HW_TS_Start(rtc_ricks_needed);
 	
-	// Ok... rtc wakeup now please...
-//	RTC.unlock();
-	RTC->WPR = 0xCA;
-	RTC->WPR = 0x53;
-
-	RTC->CR &= ~(1<<10); // clear WUTE while we setup
-	while (!(RTC->ISR & (1<<2))) {
-		; // Wait for WUTWF
-	}
-	printf("sleep rtc ticks: %lu\n", rtc_ticks_needed);
-	RTC->WUTR = rtc_ticks_needed;
-	RTC->CR |= (1<<14) | (1<<10); // WUTIE | WUTE
+	RTC.unlock();
 	
-	PWR->CR3 |= (1<<15); // Enable internal wakeup line.
-//	RTC.lock();
-	RTC->WPR=0xff;
+	// Disable wakeup
+	RTC->CR &= ~(1<<10); // Disable WUTE
+	while (!(RTC->ISR & (1<<2))) {
+		; // wait for WUTWF
+	}
+	
+	RTC->WUTR = rtc_ticks_needed;
+
+//	RTC->CR |= (1<<14); // WUTIE enable irq
+//	RTC->CR |= (1<<10); // Re-enable WUTE
+	RTC->CR |= (1<<14) | (1<<10);  // Re-enable WUTE + WUTIE
+	
+	RTC.lock();
+	
+	// now, clear the WUTF flag!
+//	RTC->ISR = ~((1<<10) | (1<<7)); // write 0 to WUTF, and ensure INIT stays 0 too...
+	RTC->ISR = ~(1<<10); // Clear WUTF. (other bits are protected)
+
+	PWR->CR3 |= (1<<15); // EIWUL enable wakeup cpu1
 	
 //
 //  HW_TS_Start(LpTimerContext.LpTimerFreeRTOS_Id, (uint32_t)time);
