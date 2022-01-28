@@ -8,7 +8,7 @@
 
 #include "FreeRTOS.h"
 #include "task.h"
-#include "stm32l4xx.h"
+#include "stm32wbxx.h"
 
 //      This FreeRTOS port "extension" for STM32 uses LPTIM to generate the OS tick instead of the systick
 // timer.  The benefit of the LPTIM is that it continues running in "stop" mode as long as its clock source
@@ -256,7 +256,7 @@ void vPortSetupTimerInterrupt( void )
    DBGMCU->APB1FZR1 |= DBGMCU_APB1FZR1_DBG_LPTIM1_STOP;
    RCC->APB1RSTR1 |= RCC_APB1RSTR1_LPTIM1RST;   // Reset the LPTIM module per erratum 2.14.1.
    RCC->APB1RSTR1 &= ~RCC_APB1RSTR1_LPTIM1RST;
-   #ifdef STM32WL   // <-- "Family" symbol is defined in the ST device header file, e.g., "stm32wlxx.h".
+#if defined(STM32WL) || defined(STM32WB)  // <-- "Family" symbol is defined in the ST device header file, e.g., "stm32wlxx.h".
    {
       #define EXTI_IMR1_LPTIM1   (1UL << 29)
       #define EXTI_IMR1_LPTIM2   (1UL << 30)
