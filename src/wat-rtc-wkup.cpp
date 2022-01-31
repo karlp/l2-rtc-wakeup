@@ -37,7 +37,7 @@ bool opt_really_use_leds = true;
 #include <unistd.h>
 
 
-extern "C" int _write_not(int file, char* ptr, int len) {
+extern "C" int _write(int file, char* ptr, int len) {
         int i;
 
         if (file == STDOUT_FILENO || file == STDERR_FILENO) {

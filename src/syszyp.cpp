@@ -21,7 +21,7 @@ extern "C" char* _sbrk(int increment) {
 }
 
 
-extern "C" int _write(int file, char* ptr, int len) {
+extern "C" __attribute__((weak)) int _write(int file, char* ptr, int len) {
 	const auto STIMULUS_STDIO = 0;
         int i;
 
