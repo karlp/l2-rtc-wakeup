@@ -146,6 +146,12 @@ static void kexti_init(void) {
 
 // for starters...
 static void ksleep() {
+		PWR->CR3 |= (1<<15);
+		PWR.set_lpms(3);
+		PWR.set_lpms_c2(3);
+
+		SCB->SCR |= (1<<2); // deepsleep
+
 	kwkup_start(9999);
 	
 	asm volatile ("wfi");
