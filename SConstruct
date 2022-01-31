@@ -97,3 +97,4 @@ srcs_app = [os.path.join('src', x) for x in ['main.cpp', 'syszyp.cpp', 'l_freert
 env.Firmware("wat-rtc-wkup.elf", [os.path.join('src', x) for x in ['wat-rtc-wkup.cpp', 'syszyp.cpp']])
 env.Firmware("wat-exti.elf", [os.path.join('src', x) for x in ['wat-exti.cpp', 'syszyp.cpp']])
 env.Firmware("wat-lp1.elf", [os.path.join('src', x) for x in ['wat-lp1.cpp', 'syszyp.cpp']])
+env.Firmware("wat-port-rtc1.elf", [os.path.join('src', x) for x in ['wat-port-rtc1.cpp', 'syszyp.cpp']])
