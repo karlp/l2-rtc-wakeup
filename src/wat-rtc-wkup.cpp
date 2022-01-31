@@ -24,6 +24,7 @@ auto led_b = GPIOB[5];
 auto sw_1 = GPIOC[4];
 auto sw_2 = GPIOD[0];
 auto sw_3 = GPIOD[1];
+auto led = led_g;
 
 /* disable this with a debugger if you want to measure power sanely
  * You'll then have to watch the ITM channels to see that things do what you think.
@@ -182,7 +183,7 @@ int main() {
 
 	if (opt_really_use_leds) {
 		RCC.enable(rcc::GPIOB);
-		led_b.set_mode(Pin::Output);
+		led.set_mode(Pin::Output);
 	}
 
 	// Depending on sleep mode, you may be restarting from scratch, or looping
@@ -193,12 +194,13 @@ int main() {
 				asm volatile ("nop");
 			}
 			if (opt_really_use_leds) {
-				led_b.toggle();
+				led.toggle();
 			}
 		}
 		// Ok, button pressed, go to sleep!
 		printf("going to sleep at: ");
 		print_date();
+		led.off();
 		ksleep();
 		pressed = false;
 		printf("woke up at.. ");
