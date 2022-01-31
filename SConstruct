@@ -7,6 +7,7 @@ env = SConscript('extern/laks/build/env.py')
 #env.SelectMCU('stm32f427vi')
 #env.SelectMCU('gd32vf103cb')
 env.SelectMCU('stm32wb55rg')
+#env.SelectMCU('stm32l476rg')
 #env.SelectMCU('stm32f303vc')
 
 env.SetOption("num_jobs", 8) # TODO - get this from the system
@@ -92,6 +93,7 @@ if not env.GetOption('clean'):
 
 env.Append(LIBS = "cmsisdsp", LIBPATH="${CMSIS}")
 srcs_app = [os.path.join('src', x) for x in ['main.cpp', 'syszyp.cpp', 'l_freertos.cpp']]
-env.Firmware('main.elf', srcs_app + sources_freertos)
+#env.Firmware('main.elf', srcs_app + sources_freertos)
 env.Firmware("wat-rtc-wkup.elf", [os.path.join('src', x) for x in ['wat-rtc-wkup.cpp', 'syszyp.cpp']])
 env.Firmware("wat-exti.elf", [os.path.join('src', x) for x in ['wat-exti.cpp', 'syszyp.cpp']])
+env.Firmware("wat-lp1.elf", [os.path.join('src', x) for x in ['wat-lp1.cpp', 'syszyp.cpp']])
