@@ -69,7 +69,8 @@ void krcc_init32(void) {
 	
 	/* No PLL, that just wastes power! */
 
-	//RCC->CFGR &= ~0x3; // do I need this? unlikely at reset? possibly at other times?
+	// Make sure to clear bits, we may be waking up!
+	RCC->CFGR &= ~0x3;
 	RCC->CFGR |= 0x2;
 	while ((RCC->CFGR & (2<<2)) != (2<<2)); // SWS = HSE
 	// Leave prescalers alone...
