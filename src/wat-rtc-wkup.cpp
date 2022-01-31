@@ -17,6 +17,7 @@
 #include <rcc/rcc.h>
 #include <rtc/rtc.h>
 #include <syscfg/syscfg.h>
+#include <uart/uart.h>
 
 auto led_r = GPIOB[1];
 auto led_g = GPIOB[0];
@@ -30,6 +31,28 @@ auto led = led_g;
  * You'll then have to watch the ITM channels to see that things do what you think.
  */
 bool opt_really_use_leds = true;
+
+#include <cerrno>
+#include <cstdlib>
+#include <unistd.h>
+
+
+extern "C" int _write_not(int file, char* ptr, int len) {
+        int i;
+
+        if (file == STDOUT_FILENO || file == STDERR_FILENO) {
+                for (i = 0; i < len; i++) {
+                        if (ptr[i] == '\n') {
+				USART1.write_blocking(ptr[i]);
+                        }
+		USART1.write_blocking(ptr[i]);
+                }
+                return i;
+        }
+        errno = EIO;
+        return -1;
+}
+
 
 /**
  * Run at 32Mhz instead of laks "top speed" by default.
@@ -172,10 +195,55 @@ static void print_date(void) {
 		);
 }
 
+static void klpuart_init(void) {
+	RCC.enable(rcc::USART1);
+	RCC.enable(rcc::LPUART1);
+
+	// sysclock? lpuart1
+	RCC->CCIPR &= ~(0x3<<10);
+	RCC->CCIPR |= (1<<10);
+	// usart1
+	RCC->CCIPR &= ~(0x3<<0);
+	RCC->CCIPR |= (1<<0);
+
+	// PA2,3 for lpuart1
+	RCC.enable(rcc::GPIOA);
+	auto pa2 = GPIOA[2];
+	auto pa3 = GPIOA[3];
+	pa2.set_af(8);
+	pa3.set_af(8);
+	pa2.set_mode(Pin::Mode::AF);
+	pa3.set_mode(Pin::Mode::AF);
+
+	RCC.enable(rcc::GPIOB);
+	auto pb6 = GPIOB[6];
+	auto pb7 = GPIOB[7];
+	pb6.set_af(7);
+	pb7.set_af(7);
+	pb6.set_mode(Pin::Mode::AF);
+	pb7.set_mode(Pin::Mode::AF);
+
+	USART1->CR1 = (1<<29); // fifo, 8bit, no parity, no special
+	//USART1->CR1 = 0;
+	USART1->CR2 = 0; // standard
+	// this is for lpuart USART1->BRR = (256*32000000u / 115200); // 71111?
+	USART1->BRR = 32000000u / 115200u;
+	USART1->CR1 |= (1<<3)|1; // TX only, enabled
+
+	LPUART1->CR1 = (1<<29);
+	//LPUART1->CR1 = 0;
+	LPUART1->CR2 = 0; // standard
+	LPUART1->BRR = (256*32000000u / 115200); // 71111?
+	LPUART1->CR1 |= (1<<3)|1; // TX only, enabled
+
+}
+
 static volatile bool pressed = false;
 
 int main() {
 	krcc_init32();
+
+	klpuart_init();
 	printf("Started from scratch, clocked up\n");
 
 	// Turn on DWT_CYCNT.  We'll use it ourselves, and pc sampling needs it too.
@@ -193,6 +261,7 @@ int main() {
 	}
 
 	// Depending on sleep mode, you may be restarting from scratch, or looping
+	uint8_t k = 0;
 	while (1) {
 		printf("start loop\n");
 		while (!pressed) {
@@ -201,6 +270,13 @@ int main() {
 			}
 			if (opt_really_use_leds) {
 				led.toggle();
+			}
+			USART1.write_blocking('a' + k++);
+			LPUART1.write_blocking('a' + k++);
+			if (k > 26) {
+				k = 0;
+				USART1.write_blocking('\n');
+				LPUART1.write_blocking('\n');
 			}
 		}
 		// Ok, button pressed, go to sleep!
