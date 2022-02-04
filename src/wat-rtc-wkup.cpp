@@ -338,37 +338,12 @@ public:
 };
 
 // for starters...
-//auto handler = HandleStop(4);
+auto handler = HandleStop(2);
 //auto handler = HandleNull();
-auto handler = HandleLP(5); // 0=100kHz, 1=200, 2=400,3=800,4=1M, 5=2M
-static void ksleep() {
-//	// Ensure that EWUIL is set
-//		PWR->CR3 |= (1<<15);
-//		PWR.set_lpms(2);
-//		PWR.set_lpms_c2(2);
-//
-//		SCB->SCR |= (1<<2); // deepsleep
-
-	kwkup_start(2);
-	handler.pre();
-
-// HEY KARL YOU EEDIOT! READ THE DOCS! YOU REALY NEED A CRIT HERE!
-//PRIMASK = 1; // Mask all interrupts (enter critical section)
-//PWR_EnterStopMode()
-//WFI
-//PWR_ExitStopMode()
-//PRIMASK = 0; // Unmask all interrupts (exit critical section)
-
-	asm volatile ("wfi");
-}
-
-static void ksleep_exit() {
-	handler.post();
-	kwkup_stop();
-}
+//auto handler = HandleLP(5); // 0=100kHz, 1=200, 2=400,3=800,4=1M, 5=2M
 
 static void ksleep2(void) {
-	kwkup_start(24000);
+	kwkup_start(14000);
 
 	uint32_t primask_bit = __get_PRIMASK( );
 	__disable_irq( );
@@ -494,11 +469,6 @@ int main() {
 		print_date();
 		led.off();
 
-//		uint32_t primask_bit = __get_PRIMASK( );
-//		__disable_irq( );
-//		ksleep();
-//		ksleep_exit();
-//		__set_PRIMASK(primask_bit);
 		ksleep2();
 		pressed = false;
 		printf("woke up at.. ");
