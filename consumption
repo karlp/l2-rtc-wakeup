@@ -1,0 +1,46 @@
+## L4
+
+wat-rtc-wkup:  (only wakes up with an actual nvic rtc wakeup handler?! surely I can skip that?!)
+shutdown: ~660nA...
+standby: ~790nA...
+stop2: 27uA? that's much too high!  what else is on?!
+stop1: 32uA?  LPUART at 32khz clock is still only 2.8uA*.03? it's not enoug!
+stop0: ~138uA?  (no stop0 figures in datasheet)
+sleep: 2.18mA (datasheet implies 1.3mA, plus ~3*gpios (diferent boaards, leds plus uarts plus buttons) + lpuart = 4.5*3 + 0.6 =>
+             gpio*3 +pwr +lpuart+syscfg + rtc + msi
+             4.5+4.5+4.5+0.6+0.5 => 14.6 * 32 => ~500uA
+	     plus MSI at 32MHz is another 110uA => total datasheet implied is ~1.95? not too far off?
+lpsleep(2): ~78uA (datasheet says ~43uA here, but we need to add 14.6*400kHz => +~6, still a little high)
+lpsleep(5): ~170uA (datasheet says ~96uA here, plus 14.6*2 => +~30, still a little high)
+
+Ok, so this is ~mostly good, except stop2/stop1 is "too high" and we need a real irq handler.
+
+
+
+ BELOW IS wat-lp1!
+MSI, RTC on, no special treatment to turn off gpios or make them analog
+
+LP Sleep works without doing anything special to the debugger.  Stop mode you need to power cycle
+to unpower debug, otherwise you'll see ~1.4mA or so.
+
+LP Sleep, 1Mhz, ~108uA (datahseet says 65uA here, probably ok.)
+LP Sleep, 100kHz, ~70uA  (datasheet says 33, probably fine here)
+Stop2, 1.7uA (datasheet says 1.79, good enough for me)
+Stop1, 7.3uA (datasheet says 7.19, good enough for me)
+Stop0, 112uA ? (that one seems really high?) (no datasheet figure for stop 0!?)
+standby: 720nA (doesn't wakeup properly!) (too high, datshset is ~236nA)
+shutdown: 640nA (does't wakeup properly!) (too high, datasheet is ~64-112 for 3-3.6V)
+
+
+## WB
+
+HSE, RTC on, no special treatment for gpios
+
+LP Sleep, 1Mhz, 440uA (datasheet says ~60uA, this is still way too high!)
+LP Sleep, 100Khz, ~400uA, (datasheet says ~30uA, this is still way too high!)
+Stop2: 43uA.  (datasheet says 2.2uA... Still seems too high, but totally workable...
+Stop1: 50uA.  (datasheet says 10uA, this is too high, but I can live with it?)
+Stop0: 156uA. (datasheet says 100uA, too high still, but....)
+
+(I mena, BLE_Beacon demo uses ~55uA normally, outside the BLE spikes, so these numbers of mine are clearly fucking bullshit!)
+
