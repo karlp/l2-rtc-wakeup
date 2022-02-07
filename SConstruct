@@ -8,6 +8,7 @@ env = SConscript('extern/laks/build/env.py')
 #env.SelectMCU('gd32vf103cb')
 #env.SelectMCU('stm32wb55rg')
 env.SelectMCU('stm32l476rg')
+#env.SelectMCU('stm32g431rb')
 #env.SelectMCU('stm32f303vc')
 
 env.SetOption("num_jobs", 8) # TODO - get this from the system

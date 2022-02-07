@@ -10,7 +10,11 @@
 #define configUSE_PREEMPTION                    1
 #define configUSE_PORT_OPTIMISED_TASK_SELECTION 1
 #define configUSE_TICKLESS_IDLE                 2
+#if defined(STM32G4)
+#define configCPU_CLOCK_HZ                      16000000
+#else
 #define configCPU_CLOCK_HZ                      32000000
+#endif
 #define configTICK_RATE_HZ                      1000
 
 // TODO - revisit for low power
@@ -28,7 +32,7 @@
 
 #define configMAX_PRIORITIES			( 5 )
 #define configMINIMAL_STACK_SIZE		( ( unsigned short ) 130 )
-#define configTOTAL_HEAP_SIZE			( ( size_t ) ( 30 * 1024 ) )
+#define configTOTAL_HEAP_SIZE			( ( size_t ) ( 10 * 1024 ) )
 #define INCLUDE_vTaskSuspend			1
 #define INCLUDE_vTaskDelayUntil			1
 #define INCLUDE_vTaskDelay				1

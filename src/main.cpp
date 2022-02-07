@@ -38,6 +38,9 @@ auto led_b = GPIOE[12];
 #elif defined(STM32L4)
 auto led_g = GPIOA[5];
 auto sw_1 = GPIOC[13];
+#elif defined(STM32G4)
+auto led_g = GPIOA[5];
+auto sw_1 = GPIOC[13];
 #else
 #error "Platform unsupported"
 #endif
@@ -45,7 +48,7 @@ auto sw_1 = GPIOC[13];
 /* disable this with a debugger if you want to measure power sanely
  * You'll then have to watch the ITM channels to see that things do what you think.
  */
-bool opt_really_use_leds = false;
+bool opt_really_use_leds = true;
 
 #include <cerrno>
 #include <cstdlib>
@@ -116,6 +119,16 @@ static void krcc_init32(void) {
 }
 #endif
 
+#if defined(STM32G4)
+static void krcc_init32(void)
+{
+	// lool, just run on hsi16 and yolo...
+	RCC.enable(rcc::PWR);
+	RCC.enable(rcc::SYSCFG);
+	
+}
+#endif
+
 
 
 static void krtc_init(void)
@@ -155,14 +168,25 @@ static void krtc_init(void)
 	RTC->PRER = 0x7f00ff; // default, gives 1sec from 32768
 
 	// setup calendar as well
+#if defined(STM32G4)
+	RTC->ICSR = (1 << 7);
+	while (!(RTC->ICSR & (1 << 6))) {
+		; // Wait for INITF
+	}
+#else
 	RTC->ISR = (1 << 7);
 	while (!(RTC->ISR & (1 << 6))) {
 		; // Wait for INITF
 	}
+#endif
 	RTC->CR &= ~(1 << 6); // 24hr format.
 	RTC->DR = 0x220127 | (4 << 13); // Thursday,2022-01-27.
 	RTC->TR = 0x092042; // 09:20:42 AM
+#if defined(STM32G4)
+	RTC->ICSR &= ~(1 << 7); // Clear init, start calendar
+#else
 	RTC->ISR &= ~(1 << 7); // Clear init, start calendar
+#endif
 
 	// set wakekup clock sel to rtc/16, so ~488usecs per tick
 	RTC->CR &= ~(0x7 << 0);
@@ -177,7 +201,7 @@ static void kexti_init(void) {
 	// sw_3.. is D1...
 #if defined(STM32WB)
 	RCC.enable(rcc::GPIOD);
-#elif defined(STM32L4)
+#elif defined(STM32L4) || defined(STM32G4)
 	RCC.enable(rcc::GPIOC);
 #else
 #error "Unhandled platform, check your switch/led ports"
@@ -194,8 +218,10 @@ static void kexti_init(void) {
 
 #if defined(STM32WB)
 	NVIC.enable(interrupt::irq::EXTI1);
-#elif defined(STM32L4)
+#elif defined(STM32L4) || defined(STM32G4)
 	NVIC.enable(interrupt::irq::EXTI15_10);
+#else
+#error "unhandled part for exti"
 #endif
 }
 
@@ -207,7 +233,7 @@ static void prvTaskBlinkGreen(void *pvParameters)
 {
 	(void)pvParameters;
 	if (opt_really_use_leds) {
-#if defined(STM32L4)
+#if defined(STM32L4) || defined(STM32G4)
 		RCC.enable(rcc::GPIOA);
 #elif defined(STM32WB)
 		RCC.enable(rcc::GPIOB);
@@ -269,7 +295,7 @@ static void klpuart_init(void) {
 	RCC->CCIPR |= (1<<0);
 
 
-#if defined(STM32WB)
+#if defined(STM32WB) || defined(STM32G4)
 	// PA2,3 for lpuart1
 	RCC.enable(rcc::GPIOA);
 	auto lp1_rx = GPIOA[2];
@@ -279,8 +305,14 @@ static void klpuart_init(void) {
 	auto lp1_rx = GPIOC[0];
 	auto lp1_tx = GPIOC[1];
 #endif
+
+#if defined(STM32G4)
+	lp1_rx.set_af(12);
+	lp1_tx.set_af(12);
+#else
 	lp1_rx.set_af(8);
 	lp1_tx.set_af(8);
+#endif
 	lp1_rx.set_mode(Pin::Mode::AF);
 	lp1_tx.set_mode(Pin::Mode::AF);
 
@@ -296,13 +328,13 @@ static void klpuart_init(void) {
 //	//USART1->CR1 = 0;
 //	USART1->CR2 = 0; // standard
 //	// this is for lpuart USART1->BRR = (256*32000000u / 115200); // 71111?
-//	USART1->BRR = 32000000u / 115200u;
+//	USART1->BRR = configCPU_CLOCK_HZ / 115200u;
 //	USART1->CR1 |= (1<<3)|1; // TX only, enabled
 
 	LPUART1->CR1 = (1<<29); // fifo, 8bit, no parity, no special
 	//LPUART1->CR1 = 0;
 	LPUART1->CR2 = 0; // standard
-	LPUART1->BRR = (32000000u / 115200) * 256; // careful with overflows!
+	LPUART1->BRR = (configCPU_CLOCK_HZ / 115200) * 256; // careful with overflows!
 	LPUART1->CR1 |= (1<<3)|1; // TX only, enabled
 
 }
@@ -327,6 +359,7 @@ static void print_date(void) {
 static TaskHandle_t th_button;
 void prvTaskButton(void *pvParameters) {
 	(void)pvParameters;
+	kexti_init();
 
 	int i = 0;
 	while (1) {
@@ -351,7 +384,6 @@ int main() {
 	krtc_init();
 	printf("RTC init, ready to  start!\n");
 
-	kexti_init();
 
 	xTaskCreate(prvTaskBlinkGreen, "blink.green", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1, NULL);
 #if defined(HAS_LED_BLUE)
@@ -413,14 +445,14 @@ void interrupt::handler<interrupt::irq::LPTIM1>() {
 #if defined(STM32WB)
 template <>
 void interrupt::handler<interrupt::irq::EXTI1>()
-#elif defined(STM32L4)
+#elif defined(STM32L4) || defined(STM32G4)
 template <>
 void interrupt::handler<interrupt::irq::EXTI15_10>()
 #else
 #error "unsupported platform"
 #endif
 {
-	EXTI->PR1 |= (1<<sw_1.n);
+	EXTI->PR1 = (1<<sw_1.n);
 	vTaskNotifyGiveFromISR(th_button, NULL);
 }
 
