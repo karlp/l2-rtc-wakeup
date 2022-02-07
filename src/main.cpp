@@ -45,7 +45,7 @@ auto sw_1 = GPIOC[13];
 /* disable this with a debugger if you want to measure power sanely
  * You'll then have to watch the ITM channels to see that things do what you think.
  */
-bool opt_really_use_leds = true;
+bool opt_really_use_leds = false;
 
 #include <cerrno>
 #include <cstdlib>
@@ -220,7 +220,7 @@ static void prvTaskBlinkGreen(void *pvParameters)
 	int i = 0;
 	while (1) {
 		i++;
-		vTaskDelay(pdMS_TO_TICKS(500));
+		vTaskDelay(pdMS_TO_TICKS(15000));
 	        ITM->stim_blocking(1, (uint8_t)('a' + (i%26)));
 		if (opt_really_use_leds) {
 			led_g.toggle();
@@ -331,7 +331,7 @@ void prvTaskButton(void *pvParameters) {
 	int i = 0;
 	while (1) {
 		i++;
-		BaseType_t rc = xTaskNotifyWait(1, 1, NULL, pdMS_TO_TICKS(3500));
+		BaseType_t rc = xTaskNotifyWait(1, 1, NULL, pdMS_TO_TICKS(10000));
 		if (rc) {
 			printf("Woke via button press!\n");
 		}

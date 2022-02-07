@@ -3,6 +3,9 @@
 main:
 systick: tickless1: ~2.4mA
 lptim1: tickless2, no stubs: ~2.4mA  (about expected)
+lptim1: tickless2, LPSleep(range0): ~60uA. (that's while it's mostly asleep between tasks)
+lptim1: tickless2, STOP2: ~25uA, but kinda jittery?
+
 
 wat-rtc-wkup:  (only wakes up with an actual nvic rtc wakeup handler?! surely I can skip that?!)
 shutdown: ~660nA...
