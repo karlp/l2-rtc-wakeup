@@ -9,6 +9,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+#include <exti/exti.h>
 #include <interrupt/interrupt.h>
 #include <rcc/rcc.h>
 #include <timer/timer.h>

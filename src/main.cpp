@@ -24,7 +24,10 @@
 auto led_r = GPIOB[1];
 auto led_g = GPIOB[0];
 auto led_b = GPIOB[5];
-#define HAS_LED_BLUE 1
+auto sw_1 = GPIOC[4];
+auto sw_2 = GPIOD[0];
+auto sw_3 = GPIOD[1];
+#define HAS_LED_BLUE 0
 #elif defined(STM32F4)
 // Nucleo 144 boards at least...
 auto led_r = GPIOB[14];
@@ -48,7 +51,7 @@ auto sw_1 = GPIOC[13];
 /* disable this with a debugger if you want to measure power sanely
  * You'll then have to watch the ITM channels to see that things do what you think.
  */
-bool opt_really_use_leds = true;
+bool opt_really_use_leds = false;
 
 #include <cerrno>
 #include <cstdlib>
@@ -198,10 +201,7 @@ static void krtc_init(void)
 }
 
 static void kexti_init(void) {
-	// sw_3.. is D1...
-#if defined(STM32WB)
-	RCC.enable(rcc::GPIOD);
-#elif defined(STM32L4) || defined(STM32G4)
+#if defined(STM32L4) || defined(STM32G4) || defined(STM32WB)
 	RCC.enable(rcc::GPIOC);
 #else
 #error "Unhandled platform, check your switch/led ports"
@@ -217,7 +217,7 @@ static void kexti_init(void) {
 	EXTI->FTSR1 |= (1 << sw_1.n); // falling edge
 
 #if defined(STM32WB)
-	NVIC.enable(interrupt::irq::EXTI1);
+	NVIC.enable(interrupt::irq::EXTI4);
 #elif defined(STM32L4) || defined(STM32G4)
 	NVIC.enable(interrupt::irq::EXTI15_10);
 #else
@@ -246,7 +246,7 @@ static void prvTaskBlinkGreen(void *pvParameters)
 	int i = 0;
 	while (1) {
 		i++;
-		vTaskDelay(pdMS_TO_TICKS(15000));
+		vTaskDelay(pdMS_TO_TICKS(10000));
 	        ITM->stim_blocking(1, (uint8_t)('a' + (i%26)));
 		if (opt_really_use_leds) {
 			led_g.toggle();
@@ -255,7 +255,7 @@ static void prvTaskBlinkGreen(void *pvParameters)
 	}
 }
 
-#if defined(HAS_LED_BLUE)
+#if defined(HAS_LED_BLUE) && (HAS_LED_BLUE == 1)
 static TimerHandle_t xBlueTimer;
 static TaskHandle_t th_blue;
 static void prvTimerBlue(TimerHandle_t xTimer)
@@ -268,7 +268,10 @@ static void prvTimerBlue(TimerHandle_t xTimer)
  */
 static void prvTaskBlinkBlue(void *pvParameters) {
 	(void)pvParameters;
-	led_b.set_mode(Pin::Output);
+	if (opt_really_use_leds) {
+		RCC.enable(rcc::GPIOB);
+		led_b.set_mode(Pin::Output);
+	}
 	
 	int i = 0;
 	while (1) {
@@ -364,7 +367,7 @@ void prvTaskButton(void *pvParameters) {
 	int i = 0;
 	while (1) {
 		i++;
-		BaseType_t rc = xTaskNotifyWait(1, 1, NULL, pdMS_TO_TICKS(10000));
+		BaseType_t rc = xTaskNotifyWait(1, 1, NULL, pdMS_TO_TICKS(14000));
 		if (rc) {
 			printf("Woke via button press!\n");
 		}
@@ -386,7 +389,7 @@ int main() {
 
 
 	xTaskCreate(prvTaskBlinkGreen, "blink.green", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1, NULL);
-#if defined(HAS_LED_BLUE)
+#if defined(HAS_LED_BLUE) && (HAS_LED_BLUE == 1)
 	xTaskCreate(prvTaskBlinkBlue, "blink.blue", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1, &th_blue);
 
 	xBlueTimer = xTimerCreate("blue.blink", 200 * portTICK_PERIOD_MS, true, 0, prvTimerBlue);
@@ -405,7 +408,7 @@ int main() {
 
 	// Required to use FreeRTOS ISR methods!
 	// ( set the priority for all of them, regardless of platform...
-	NVIC.set_priority(interrupt::irq::EXTI1, 6<<configPRIO_BITS);
+	NVIC.set_priority(interrupt::irq::EXTI4, 6<<configPRIO_BITS);
 	NVIC.set_priority(interrupt::irq::EXTI15_10, 6<<configPRIO_BITS);
 
 	vTaskStartScheduler();
@@ -444,7 +447,7 @@ void interrupt::handler<interrupt::irq::LPTIM1>() {
 
 #if defined(STM32WB)
 template <>
-void interrupt::handler<interrupt::irq::EXTI1>()
+void interrupt::handler<interrupt::irq::EXTI4>()
 #elif defined(STM32L4) || defined(STM32G4)
 template <>
 void interrupt::handler<interrupt::irq::EXTI15_10>()
