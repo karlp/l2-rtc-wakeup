@@ -1,5 +1,9 @@
 ## L4
 
+main:
+systick: tickless1: ~2.4mA
+lptim1: tickless2, no stubs: ~2.4mA  (about expected)
+
 wat-rtc-wkup:  (only wakes up with an actual nvic rtc wakeup handler?! surely I can skip that?!)
 shutdown: ~660nA...
 standby: ~790nA...

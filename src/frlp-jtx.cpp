@@ -4,11 +4,26 @@
 // Example integration and validation: https://github.com/jefftenney/LPTIM-Tick
 //
 // Copyright 2021 Jeff Tenney <jeff.tenney@gmail.com>
-
+// Converted to laks/c++ Karl Palsson <karlp@etactica.com> 2022
 
 #include "FreeRTOS.h"
 #include "task.h"
-#include "stm32wbxx.h"
+
+#include <interrupt/interrupt.h>
+#include <rcc/rcc.h>
+#include <timer/timer.h>
+
+
+static inline void __disable_irq(void)
+{
+  __asm volatile ("cpsid i" : : : "memory");
+}
+
+static inline void __enable_irq(void)
+{
+  __asm volatile ("cpsie i" : : : "memory");
+}
+
 
 //      This FreeRTOS port "extension" for STM32 uses LPTIM to generate the OS tick instead of the systick
 // timer.  The benefit of the LPTIM is that it continues running in "stop" mode as long as its clock source
@@ -135,11 +150,10 @@
 // because a key feature of this software is timing accuracy -- no drift in tickless idle.
 //
 #ifdef configTICK_USES_LSI
-   #define LPTIMSEL_Val 1 // LSI
-   #define IS_REF_CLOCK_READY() (RCC->CSR & RCC_CSR_LSIRDY)
+#error "Unsupported in this port"
 #else
    #define LPTIMSEL_Val 3 // LSE
-   #define IS_REF_CLOCK_READY() (RCC->BDCR & RCC_BDCR_LSERDY)
+   #define IS_REF_CLOCK_READY() (RCC->BDCR & (1<<1))
 #endif
 
 //      Symbol configLPTIM_REF_CLOCK_HZ, optionally defined in FreeRTOSConfig.h, is the frequency of the
@@ -230,11 +244,14 @@ static volatile uint8_t isTickNowSuppressed;    //   This field helps the tick I
 //      If your MCU has only one LPTIM instance, you may or may not need to update these three #defines.  But
 // you must change the first five statements of vPortSetupTimerInterrupt() to match your STM32.
 //
-#ifndef LPTIM
-#define LPTIM              LPTIM1
-#define LPTIM_IRQn         LPTIM1_IRQn
-#define LPTIM_IRQHandler   LPTIM1_IRQHandler
-#endif
+//#ifndef LPTIM
+//#define LPTIM              LPTIM1
+// KARL FIXME
+//#define LPTIM_IRQn         LPTIM1_IRQn
+//#define LPTIM_IRQHandler   LPTIM1_IRQHandler
+//#endif
+
+
 
 //============================================================================================================
 // vPortSetupTimerInterrupt()
@@ -242,7 +259,7 @@ static volatile uint8_t isTickNowSuppressed;    //   This field helps the tick I
 //      This function overrides the "standard" port function, decorated with __attribute__((weak)), in port.c.
 // Call with interrupts masked.
 //
-void vPortSetupTimerInterrupt( void )
+void vPortSetupTimerInterrupt_real( void )
 {
    //      Enable the APB clock to the LPTIM.  Then select either LSE or LSI as the kernel clock for the
    // LPTIM.  Then be sure the LPTIM "freezes" when the debugger stops program execution.  Then reset the
@@ -251,11 +268,16 @@ void vPortSetupTimerInterrupt( void )
    //      Modify these statements as needed for your STM32.  See LPTIM Instance Selection (above) for
    // additional information.
    //
-   RCC->APB1ENR1 |= RCC_APB1ENR1_LPTIM1EN;
-   MODIFY_REG(RCC->CCIPR, RCC_CCIPR_LPTIM1SEL, LPTIMSEL_Val << RCC_CCIPR_LPTIM1SEL_Pos);
-   DBGMCU->APB1FZR1 |= DBGMCU_APB1FZR1_DBG_LPTIM1_STOP;
-   RCC->APB1RSTR1 |= RCC_APB1RSTR1_LPTIM1RST;   // Reset the LPTIM module per erratum 2.14.1.
-   RCC->APB1RSTR1 &= ~RCC_APB1RSTR1_LPTIM1RST;
+   //RCC->APB1ENR1 |= RCC_APB1ENR1_LPTIM1EN;
+	RCC.enable(rcc::LPTIM1);
+   //MODIFY_REG(RCC->CCIPR, RCC_CCIPR_LPTIM1SEL, LPTIMSEL_Val << RCC_CCIPR_LPTIM1SEL_Pos);
+	RCC->CCIPR &= ~(0x3<<18);
+	RCC->CCIPR |= (LPTIMSEL_Val<<18);
+   //DBGMCU->APB1FZR1 |= DBGMCU_APB1FZR1_DBG_LPTIM1_STOP;  // FIXME?
+//   RCC->APB1RSTR1 |= RCC_APB1RSTR1_LPTIM1RST;   // Reset the LPTIM module per erratum 2.14.1.
+//   RCC->APB1RSTR1 &= ~RCC_APB1RSTR1_LPTIM1RST;
+   RCC->APB1RSTR1 |= (1<<31);
+   RCC->APB1RSTR1 &= ~(1<<31);
 #if defined(STM32WL) || defined(STM32WB)  // <-- "Family" symbol is defined in the ST device header file, e.g., "stm32wlxx.h".
    {
       #define EXTI_IMR1_LPTIM1   (1UL << 29)
@@ -312,11 +334,14 @@ void vPortSetupTimerInterrupt( void )
 
    //      Configure and start LPTIM.
    //
-   LPTIM->IER = LPTIM_IER_CMPMIE | LPTIM_IER_CMPOKIE;   // Modify this register only when LPTIM is disabled.
-   LPTIM->CFGR = (0 << LPTIM_CFGR_PRESC_Pos);           // Modify this register only when LPTIM is disabled.
-   LPTIM->CR = LPTIM_CR_ENABLE;
-   LPTIM->ARR = 0xFFFF;        // timer period = ARR + 1.  Modify this register only when LPTIM is enabled.
-   LPTIM->CMP = ulTimerCountsForOneTick;                // Modify this register only when LPTIM is enabled.
+   //LPTIM->IER = LPTIM_IER_CMPMIE | LPTIM_IER_CMPOKIE;   // Modify this register only when LPTIM is disabled.
+   LPTIM1->IER = (1<<0) | (1<<3);
+//   LPTIM->CFGR = (0 << LPTIM_CFGR_PRESC_Pos);           // Modify this register only when LPTIM is disabled.
+   LPTIM1->CFGR = 0;
+//   LPTIM->CR = LPTIM_CR_ENABLE;
+   LPTIM1->CR = 1<<0;
+   LPTIM1->ARR = 0xFFFF;        // timer period = ARR + 1.  Modify this register only when LPTIM is enabled.
+   LPTIM1->CMP = ulTimerCountsForOneTick;                // Modify this register only when LPTIM is enabled.
    isCmpWriteInProgress = pdTRUE;
    usIdealCmp = ulTimerCountsForOneTick;
    #if ( configLPTIM_ENABLE_PRECISION != 0 )
@@ -324,13 +349,16 @@ void vPortSetupTimerInterrupt( void )
       lRunningSubcountError = lSubcountErrorPerTick;
    }
    #endif // configLPTIM_ENABLE_PRECISION
-   LPTIM->CR |= LPTIM_CR_CNTSTRT;
+//   LPTIM->CR |= LPTIM_CR_CNTSTRT;
+   LPTIM1->CR |= (1<<2);
 
    //      Enable the timer interrupt at the configured priority.  See configTICK_INTERRUPT_PRIORITY for
    // important details.
    //
-   NVIC_SetPriority( LPTIM_IRQn, configTICK_INTERRUPT_PRIORITY );
-   NVIC_EnableIRQ( LPTIM_IRQn );
+//   NVIC_SetPriority( LPTIM_IRQn, configTICK_INTERRUPT_PRIORITY );
+//   NVIC_EnableIRQ( LPTIM_IRQn );
+   NVIC.set_priority(interrupt::irq::LPTIM1, configTICK_INTERRUPT_PRIORITY);
+   NVIC.enable(interrupt::irq::LPTIM1);
 }
 
 
@@ -343,7 +371,7 @@ void vPortSetupTimerInterrupt( void )
 //      FreeRTOS version 10.4.0 or newer is recommended to ensure this function doesn't potentially return one
 // OS tick *after* the intended time.
 //
-void vPortSuppressTicksAndSleep( TickType_t xExpectedIdleTime )
+void vPortSuppressTicksAndSleep_real( TickType_t xExpectedIdleTime )
 {
    //      Limit the time we plan to spend in tickless idle.  LPTIM has only so much range.
    //
@@ -417,7 +445,7 @@ void vPortSuppressTicksAndSleep( TickType_t xExpectedIdleTime )
       if (!isCmpWriteInProgress)
       {
          isCmpWriteInProgress = pdTRUE;
-         LPTIM->CMP = usIdealCmp == 0xFFFF ? 0 : usIdealCmp;  // never write 0xFFFF to CMP (HW rule)
+         LPTIM1->CMP = usIdealCmp == 0xFFFF ? 0 : usIdealCmp;  // never write 0xFFFF to CMP (HW rule)
       }
       uint32_t ulExpectedEndCmp = usIdealCmp;
 
@@ -452,9 +480,12 @@ void vPortSuppressTicksAndSleep( TickType_t xExpectedIdleTime )
          {
             //      Wait for an interrupt.
             //
-            __DSB();
-            __WFI();
-            __ISB();  // seems to be required only when debugging low-power modes (ie, DBGMCU->CR != 0)
+//            __DSB();
+//            __WFI();
+//            __ISB();  // seems to be required only when debugging low-power modes (ie, DBGMCU->CR != 0)
+		 asm volatile("dsb");
+		 asm volatile("wfi");
+		 asm volatile("isb");
          }
          configPOST_SLEEP_PROCESSING( (const TickType_t)xExpectedIdleTime );
 
@@ -462,7 +493,8 @@ void vPortSuppressTicksAndSleep( TickType_t xExpectedIdleTime )
          // of sleep mode.
          //
          __enable_irq();
-         __ISB();  // ISB is recommended by ARM; not strictly needed in Cortex-M when __disable_irq() is next.
+//         __ISB();  // ISB is recommended by ARM; not strictly needed in Cortex-M when __disable_irq() is next.
+	 asm volatile ("isb");
 
          //      Disable interrupts for our call to eTaskConfirmSleepModeStatus() and in case we iterate again
          // in the loop.
@@ -504,7 +536,7 @@ void vPortSuppressTicksAndSleep( TickType_t xExpectedIdleTime )
          // asynchronously, so we keep reading it until we get the same value during a verification read.
          //
          uint32_t ulCurrCount;
-         do ulCurrCount = LPTIM->CNT; while (ulCurrCount != LPTIM->CNT);
+         do ulCurrCount = LPTIM1->CNT; while (ulCurrCount != LPTIM1->CNT);
 
          //      See how many timer counts we still had left, but don't include the timer count currently
          // underway.  If a tick happens to align with the beginning of the timer count currently underway, we
@@ -590,7 +622,7 @@ void vPortSuppressTicksAndSleep( TickType_t xExpectedIdleTime )
                if (!isCmpWriteInProgress)
                {
                   isCmpWriteInProgress = pdTRUE;
-                  LPTIM->CMP = usIdealCmp == 0xFFFF ? 0 : usIdealCmp;  // never write 0xFFFF to CMP (HW rule)
+                  LPTIM1->CMP = usIdealCmp == 0xFFFF ? 0 : usIdealCmp;  // never write 0xFFFF to CMP (HW rule)
                }
             }
          }
@@ -612,7 +644,6 @@ void vPortSuppressTicksAndSleep( TickType_t xExpectedIdleTime )
       vTaskStepTick( xCompleteTickPeriods );
    }
 }
-
 
 //============================================================================================================
 // LPTIM_IRQHandler()
@@ -640,9 +671,11 @@ void LPTIM_IRQHandler( void )
    //      Acknowledge and clear the CMPM event.  Based on the errata, we dare not clear this flag unless it
    // is already set.  Call it an over-abundance of caution.
    //
-   if (LPTIM->ISR & LPTIM_ISR_CMPM)
+//   if (LPTIM->ISR & LPTIM_ISR_CMPM)
+	if (LPTIM1->ISR & (1<<0))
    {
-      LPTIM->ICR = LPTIM_ICR_CMPMCF;
+//      LPTIM->ICR = LPTIM_ICR_CMPMCF;
+      LPTIM1->ICR = (1<<0); // CMPMCF
    }
 
    //      Get a coherent copy of the current count value in the timer.  The CNT register is clocked
@@ -653,7 +686,7 @@ void LPTIM_IRQHandler( void )
    // mechanism for CMP.
    //
    uint32_t ulCountValue;
-   do ulCountValue = LPTIM->CNT; while (ulCountValue != LPTIM->CNT);
+   do ulCountValue = LPTIM1->CNT; while (ulCountValue != LPTIM1->CNT);
    uint32_t ulCountsLate = (uint16_t)(ulCountValue - usIdealCmp);
 
    //      If we're more than one full tick late, then the application masked interrupts for too long.  That
@@ -724,7 +757,7 @@ void LPTIM_IRQHandler( void )
       usIdealCmp += ulNumCounts;  // usIdealCmp is a uint16_t
       if (!isCmpWriteInProgress)
       {
-         LPTIM->CMP = usIdealCmp == 0xFFFF ? 0 : usIdealCmp;  // never write 0xFFFF to CMP (HW rule)
+         LPTIM1->CMP = usIdealCmp == 0xFFFF ? 0 : usIdealCmp;  // never write 0xFFFF to CMP (HW rule)
          isCmpWriteInProgress = pdTRUE;
       }
 
@@ -744,19 +777,21 @@ void LPTIM_IRQHandler( void )
    // finished.  We may have a new value to write after handling CMPM above.  Handling CMPOK last in this ISR
    // isn't very important, but it is a slight optimization over other ordering.
    //
-   if (LPTIM->ISR & LPTIM_ISR_CMPOK)
+//   if (LPTIM->ISR & LPTIM_ISR_CMPOK)
+   if (LPTIM1->ISR & (1<<3))
    {
       //      Acknowledge and clear the CMPOK event.
       //
-      LPTIM->ICR = LPTIM_ICR_CMPOKCF;
+//      LPTIM->ICR = LPTIM_ICR_CMPOKCF;
+      LPTIM1->ICR = (1<<3);
 
       //      If there is a "pending" write operation to CMP, do it now.  Otherwise, make note that the write
       // is now complete.  Remember to watch for CMP set to 0 when usIdealCmp is 0xFFFF.  There's no pending
       // write in that case.
       //
-      if ((uint16_t)(LPTIM->CMP - usIdealCmp) > 1UL)
+      if ((uint16_t)(LPTIM1->CMP - usIdealCmp) > 1UL)
       {
-         LPTIM->CMP = usIdealCmp == 0xFFFF ? 0 : usIdealCmp; // never write 0xFFFF to CMP (HW rule)
+         LPTIM1->CMP = usIdealCmp == 0xFFFF ? 0 : usIdealCmp; // never write 0xFFFF to CMP (HW rule)
          // isCmpWriteInProgress = pdTRUE;  // already true here in the handler for write completed
       }
       else
@@ -766,4 +801,17 @@ void LPTIM_IRQHandler( void )
    }
 }
 
+
 #endif  // configUSE_TICKLESS_IDLE == 2
+
+
+extern "C" {
+	void vPortSetupTimerInterrupt( void ) {
+		vPortSetupTimerInterrupt_real();
+	}
+
+	void vPortSuppressTicksAndSleep( TickType_t xExpectedIdleTime ) {
+		vPortSuppressTicksAndSleep_real(xExpectedIdleTime);
+	}
+
+}
