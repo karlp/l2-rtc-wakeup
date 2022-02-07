@@ -6,8 +6,9 @@
 #include "FreeRTOS.h"
 
 #include <interrupt/interrupt.h>
-#include <rcc/rcc.h>
 #include <pwr/pwr.h>
+#include <rcc/rcc.h>
+#include <uart/uart.h>
 
 static uint32_t _rcc_cr;
 static uint32_t _rcc_cfgr;
@@ -70,6 +71,7 @@ extern "C" {
 
 	void myPreSleepFunction(TickType_t xModifiableIdleTime)
 	{
+		while (!(LPUART1->ISR & (1<<6)));
 		pre_lpsleep(0);
 //		pre_stop(2);
 	}
