@@ -1,13 +1,35 @@
-## L4
+## main.elf
 
+### L4
 main:
 systick: tickless1: ~2.4mA
 lptim1: tickless2, no stubs: ~2.4mA  (about expected)
-lptim1: tickless2, LPSleep(range0): ~60uA. (that's while it's mostly asleep between tasks)
-lptim1: tickless2, STOP2: ~25uA, but kinda jittery?
+lptim1: tickless2, LPSleep(range0): ~56uA. (that's while it's mostly asleep between tasks)
+lptim1: tickless2, STOP2: ~22uA
+
+### WB
+(tested with unplug/replug of stlink (so debug is off, but powered) and removing jp5 jumpers for vdd and SWDIO (
+st demos recommend removing all of them, but those are the ones that matter)
+
+lptim, tickless2, lpsleep(0) with c2stop2: ~400uA but jittery.  This is "too high" still?
+lptim, tickless2, lpsleep(0) with c2standby: ~400uA but jittery.  This is "too high" still?
+lptim, tickless2, stop2 with c2stop2: ~3uA.  (whee! we got there eventually!)
+lptim, tickless2, stop2 with c2standby(3): ~2.9uA?.  (feels like it might be little less? not a lot though)
+lptim, tickless2, stop2 with c2shutdown(4): ~2.8uA?.  (feels like it might be little less? not a lot though)
+lptim, tickless2, stop2 without c2 stop2: 120uA.
 
 
-wat-rtc-wkup:  (only wakes up with an actual nvic rtc wakeup handler?! surely I can skip that?!)
+
+## Comparison:
+st cube BLE_HeartRateFreeRTOS.elf emo is ~3-7uA when it goes to slow advertising, ~300uA in fast advertising
+and the SWDIO jumper makes no difference.  the jumper for the level translator still adds ~550uA or so though, so thats consistent
+
+that's with working bluetooth though, so we _must_ be able to do better!
+
+st cube: PWR_STOP2_RTC will happily got to 2.7uA with jp5(vdd+swdio) re removed.
+
+## wat-rtc-wkup:  (only wakes up with an actual nvic rtc wakeup handler?! surely I can skip that?!)
+### l4:
 shutdown: ~660nA...
 standby: ~790nA...
 stop2: 27uA? that's much too high!  what else is on?!
@@ -40,6 +62,9 @@ shutdown: 640nA (does't wakeup properly!) (too high, datasheet is ~64-112 for 3-
 
 
 ## WB
+
+### main.elf
+
 
 HSE, RTC on, no special treatment for gpios
 
